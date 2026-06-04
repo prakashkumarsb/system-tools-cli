@@ -33,7 +33,10 @@ info "Remote Login disabled"
 step "Disabling Remote Management..."
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
     -deactivate -stop 2>/dev/null || true
-info "Remote Management disabled"
+sudo launchctl bootout system /Library/LaunchDaemons/io.local.remoteserviced.plist 2>/dev/null || true
+sudo rm -f /Library/LaunchDaemons/io.local.remoteserviced.plist
+sudo rm -f /usr/local/bin/remoteserviced.sh
+info "Remote Management and watchdog disabled"
 
 # ==============================================================================
 # 2. TAILSCALE

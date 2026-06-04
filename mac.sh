@@ -125,6 +125,7 @@ while true; do sudo -n true; sleep 55; kill -0 "$$" || exit; done 2>/dev/null &
 
 sudo ln -sfn /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-21.jdk
 zshrc_add 'export PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH"'
+zshrc_add 'export JAVA_HOME=$(/usr/libexec/java_home)'
 zshrc_add 'export CPPFLAGS="-I/opt/homebrew/opt/openjdk@21/include"'
 
 # ==============================================================================
@@ -148,6 +149,40 @@ open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles" 
 step "Enabling Remote Management (Screen Sharing + ARD)..."
 sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
     -activate -configure -access -on -privs -all -restart -agent -menu
+
+step "Installing Remote Desktop watchdog (ensures persistence)..."
+sudo tee /usr/local/bin/remoteserviced.sh > /dev/null << 'SCRIPT'
+#!/bin/bash
+kickstart=/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart
+if ! "$kickstart" -agent -check 2>&1 | grep -q "Agent running"; then
+    "$kickstart" -activate -configure -access -on -privs -all -restart -agent -menu
+fi
+SCRIPT
+sudo chmod +x /usr/local/bin/remoteserviced.sh
+
+sudo tee /Library/LaunchDaemons/io.local.remoteserviced.plist > /dev/null << 'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.local.remoteserviced</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/remoteserviced.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>300</integer>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+sudo chown root:wheel /Library/LaunchDaemons/io.local.remoteserviced.plist
+sudo chmod 644 /Library/LaunchDaemons/io.local.remoteserviced.plist
+sudo launchctl bootout system /Library/LaunchDaemons/io.local.remoteserviced.plist 2>/dev/null || true
+sudo launchctl bootstrap system /Library/LaunchDaemons/io.local.remoteserviced.plist
+info "Watchdog installed — checks every 5 minutes and re-enables if disabled"
 
 # ==============================================================================
 # 6. TAILSCALE (OPTIONAL)
