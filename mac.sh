@@ -62,6 +62,7 @@ brew install "${formulas[@]}"
 
 step "Installing core GUI applications..."
 brew install --cask iterm2 visual-studio-code maccy stats jiggler lulu
+curl -L https://iterm2.com/shell_integration/zsh -o ~/.iterm2_shell_integration.zsh
 
 optional_apps=(
     appcleaner
