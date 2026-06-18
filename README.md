@@ -52,8 +52,8 @@ chmod +x mac.sh
 
 #### GUI Applications (Casks)
 
-**Core (always installed):**
-- iTerm2, Visual Studio Code, Maccy, Stats, Jiggler
+**Core (installed if missing; prompts before reinstalling if already present):**
+- iTerm2, Visual Studio Code, Maccy, Stats, Jiggler, Lulu
 
 **Optional (prompted):**
 - AppCleaner, CleanMyMac, Little Snitch, Folder Preview Pro
@@ -74,8 +74,8 @@ chmod +x mac.sh
 
 ## Script Behavior
 
-- **Idempotent:** Safe to re-run — won't duplicate `.zshrc` entries or reinstall Homebrew/Oh My Zsh if already present.
-- **Interactive:** Prompts before installing optional apps (bulk or individual selection).
+- **Idempotent:** Safe to re-run — won't duplicate `.zshrc` entries or reinstall Homebrew/Oh My Zsh if already present. Core GUI apps prompt before reinstalling.
+- **Interactive:** Prompts before reinstalling core apps and before installing optional apps (bulk or individual selection).
 - **Tailscale opt-in:** Asked once at the start; skipped entirely if declined.
 
 ## Prerequisites

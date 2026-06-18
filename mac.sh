@@ -61,7 +61,18 @@ brew install "${formulas[@]}"
 # ==============================================================================
 
 step "Installing core GUI applications..."
-brew install --cask iterm2 visual-studio-code maccy stats jiggler lulu
+core_casks=(iterm2 visual-studio-code maccy stats jiggler lulu)
+for cask in "${core_casks[@]}"; do
+    if brew list --cask "$cask" &>/dev/null; then
+        if ask_to_install "$cask (already installed, reinstall?)"; then
+            brew reinstall --cask "$cask"
+        else
+            info "Skipping $cask"
+        fi
+    else
+        brew install --cask "$cask"
+    fi
+done
 curl -L https://iterm2.com/shell_integration/zsh -o ~/.iterm2_shell_integration.zsh
 
 optional_apps=(
@@ -154,7 +165,17 @@ step "Installing Remote Desktop watchdog (ensures persistence)..."
 sudo tee /usr/local/bin/remoteserviced.sh > /dev/null << 'SCRIPT'
 #!/bin/bash
 kickstart=/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart
-if ! "$kickstart" -agent -check 2>&1 | grep -q "Agent running"; then
+
+# Check if ARDAgent process is running
+if ! pgrep -x "ARDAgent" > /dev/null 2>&1; then
+    "$kickstart" -activate -configure -access -on -privs -all -restart -agent -menu
+    exit 0
+fi
+
+# Check if Screen Sharing service is disabled
+if ! launchctl print system/com.apple.screensharing 2>/dev/null | grep -q "state = running"; then
+    launchctl enable system/com.apple.screensharing
+    launchctl kickstart -k system/com.apple.screensharing 2>/dev/null || true
     "$kickstart" -activate -configure -access -on -privs -all -restart -agent -menu
 fi
 SCRIPT
@@ -172,7 +193,7 @@ sudo tee /Library/LaunchDaemons/io.local.remoteserviced.plist > /dev/null << 'PL
         <string>/usr/local/bin/remoteserviced.sh</string>
     </array>
     <key>StartInterval</key>
-    <integer>300</integer>
+    <integer>20</integer>
     <key>RunAtLoad</key>
     <true/>
 </dict>
@@ -182,7 +203,7 @@ sudo chown root:wheel /Library/LaunchDaemons/io.local.remoteserviced.plist
 sudo chmod 644 /Library/LaunchDaemons/io.local.remoteserviced.plist
 sudo launchctl bootout system /Library/LaunchDaemons/io.local.remoteserviced.plist 2>/dev/null || true
 sudo launchctl bootstrap system /Library/LaunchDaemons/io.local.remoteserviced.plist
-info "Watchdog installed — checks every 5 minutes and re-enables if disabled"
+info "Watchdog installed — checks every 20 seconds and re-enables if disabled"
 
 # ==============================================================================
 # 6. TAILSCALE (OPTIONAL)
