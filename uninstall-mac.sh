@@ -25,18 +25,19 @@ while true; do sudo -n true; sleep 55; kill -0 "$$" || exit; done 2>/dev/null &
 # 1. REMOTE ACCESS
 # ==============================================================================
 
-step "Disabling Remote Login (SSH)..."
-sudo launchctl disable system/com.openssh.sshd
-sudo launchctl bootout system /System/Library/LaunchDaemons/ssh.plist 2>/dev/null || true
-info "Remote Login disabled"
-
-step "Disabling Remote Management..."
-sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-    -deactivate -stop 2>/dev/null || true
-sudo launchctl bootout system /Library/LaunchDaemons/io.local.remoteserviced.plist 2>/dev/null || true
-sudo rm -f /Library/LaunchDaemons/io.local.remoteserviced.plist
-sudo rm -f /usr/local/bin/remoteserviced.sh
-info "Remote Management and watchdog disabled"
+step "Removing VS Code Tunnel service..."
+CODE_CMD="/opt/homebrew/bin/code"
+if [ ! -x "$CODE_CMD" ]; then
+    CODE_CMD="$(command -v code 2>/dev/null || true)"
+fi
+if [ -n "$CODE_CMD" ]; then
+    "$CODE_CMD" tunnel service uninstall 2>/dev/null || true
+    info "VS Code Tunnel service removed"
+else
+    info "VS Code CLI not found, skipping tunnel service removal"
+fi
+sudo pmset -a disablesleep 0 2>/dev/null || true
+info "System sleep re-enabled"
 
 # ==============================================================================
 # 2. TAILSCALE
@@ -80,6 +81,7 @@ lines_to_remove=(
     'source /opt/homebrew/share/zsh-history-substring-search/zsh-history-substring-search.zsh'
     'export ZSH_HIGHLIGHT_HIGHLIGHTERS_DIR=/opt/homebrew/share/zsh-syntax-highlighting/highlighters'
     'export PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH"'
+    'export JAVA_HOME=$(/usr/libexec/java_home)'
     'export CPPFLAGS="-I/opt/homebrew/opt/openjdk@21/include"'
 )
 
@@ -99,7 +101,7 @@ step "Uninstalling GUI applications..."
 casks=(
     iterm2 visual-studio-code maccy stats jiggler lulu
     appcleaner cleanmymac little-snitch folder-preview-pro
-    jordanbaird-ice boring-notch microsoft-teams intellij-idea
+    boring-notch microsoft-teams intellij-idea
     postman purevpn whatsapp "4k-video-downloader+"
 )
 
@@ -207,9 +209,9 @@ info "App caches, logs, and support files cleared"
 step "Uninstalling CLI formulas..."
 
 formulas=(
-    bash coreutils diff-pdf docker docker-compose git-lfs
-    hadolint htop ice ipinfo-cli k6 mas maven node orbstack pipx python3
-    shellcheck sshpass watch wget xbar zsh-autosuggestions
+    bash coreutils docker docker-compose git-lfs
+    ice ipinfo-cli maven node orbstack pipx python3
+    shellcheck sshpass watch wget zsh-autosuggestions
     zsh-history-substring-search zsh-syntax-highlighting rsync openjdk@21
 )
 

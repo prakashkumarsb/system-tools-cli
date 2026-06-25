@@ -25,6 +25,13 @@ zshrc_add() {
 }
 
 # ==============================================================================
+# SUDO KEEP-ALIVE
+# ==============================================================================
+
+sudo -v
+while true; do sudo -n true; sleep 55; kill -0 "$$" || exit; done 2>/dev/null &
+
+# ==============================================================================
 # 1. BASE CLI TOOLS & PACKAGES
 # ==============================================================================
 
@@ -47,14 +54,20 @@ step "Updating Homebrew..."
 brew update
 
 formulas=(
-    bash coreutils diff-pdf docker docker-compose git git-lfs
-    hadolint htop ice ipinfo-cli k6 mas maven node orbstack pipx python3
-    shellcheck sshpass watch wget xbar zsh-autosuggestions
+    bash coreutils docker docker-compose git git-lfs
+    ice ipinfo-cli maven node orbstack pipx python3
+    shellcheck sshpass watch wget zsh-autosuggestions
     zsh-history-substring-search zsh-syntax-highlighting rsync openjdk@21
 )
 
 step "Installing CLI tools (${#formulas[@]} formulas)..."
-brew install "${formulas[@]}"
+for formula in "${formulas[@]}"; do
+    if brew list "$formula" &>/dev/null; then
+        info "$formula already installed"
+    else
+        brew install "$formula"
+    fi
+done
 
 # ==============================================================================
 # 2. GUI APPLICATIONS (CASKS)
@@ -62,10 +75,19 @@ brew install "${formulas[@]}"
 
 step "Installing core GUI applications..."
 core_casks=(iterm2 visual-studio-code maccy stats jiggler lulu)
+
+# Check if a cask is already present (via Homebrew or manually installed .app)
+cask_installed() {
+    brew list --cask "$1" &>/dev/null && return 0
+    local app_path
+    app_path="$(brew info --cask "$1" 2>/dev/null | grep -o '/Applications/.*\.app' | head -1)"
+    [[ -n "$app_path" && -d "$app_path" ]]
+}
+
 for cask in "${core_casks[@]}"; do
-    if brew list --cask "$cask" &>/dev/null; then
+    if cask_installed "$cask"; then
         if ask_to_install "$cask (already installed, reinstall?)"; then
-            brew reinstall --cask "$cask"
+            brew reinstall --cask --force "$cask"
         else
             info "Skipping $cask"
         fi
@@ -80,7 +102,6 @@ optional_apps=(
     cleanmymac
     little-snitch
     folder-preview-pro
-    jordanbaird-ice
     "TheBoredTeam/boring-notch/boring-notch"
     microsoft-teams
     intellij-idea
@@ -130,10 +151,6 @@ fi
 # OpenJDK 21
 step "Linking OpenJDK 21..."
 
-# Ask for sudo once and keep it alive for the rest of the script
-sudo -v
-while true; do sudo -n true; sleep 55; kill -0 "$$" || exit; done 2>/dev/null &
-
 sudo ln -sfn /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-21.jdk
 zshrc_add 'export PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH"'
 zshrc_add 'export JAVA_HOME=$(/usr/libexec/java_home)'
@@ -147,66 +164,7 @@ step "Initializing Git LFS..."
 sudo git lfs install --system
 
 # ==============================================================================
-# 5. REMOTE ACCESS
-# ==============================================================================
-
-step "Enabling Remote Login (SSH)..."
-sudo launchctl enable system/com.openssh.sshd
-sudo launchctl bootstrap system /System/Library/LaunchDaemons/ssh.plist 2>/dev/null || true
-warn "Full Disk Access for SSH requires manual approval:"
-warn "  System Settings → Privacy & Security → Full Disk Access → add /usr/libexec/sshd-keygen-wrapper"
-open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles" 2>/dev/null || true
-
-step "Enabling Remote Management (Screen Sharing + ARD)..."
-sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-    -activate -configure -access -on -privs -all -restart -agent -menu
-
-step "Installing Remote Desktop watchdog (ensures persistence)..."
-sudo tee /usr/local/bin/remoteserviced.sh > /dev/null << 'SCRIPT'
-#!/bin/bash
-kickstart=/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart
-
-# Check if ARDAgent process is running
-if ! pgrep -x "ARDAgent" > /dev/null 2>&1; then
-    "$kickstart" -activate -configure -access -on -privs -all -restart -agent -menu
-    exit 0
-fi
-
-# Check if Screen Sharing service is disabled
-if ! launchctl print system/com.apple.screensharing 2>/dev/null | grep -q "state = running"; then
-    launchctl enable system/com.apple.screensharing
-    launchctl kickstart -k system/com.apple.screensharing 2>/dev/null || true
-    "$kickstart" -activate -configure -access -on -privs -all -restart -agent -menu
-fi
-SCRIPT
-sudo chmod +x /usr/local/bin/remoteserviced.sh
-
-sudo tee /Library/LaunchDaemons/io.local.remoteserviced.plist > /dev/null << 'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>io.local.remoteserviced</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/local/bin/remoteserviced.sh</string>
-    </array>
-    <key>StartInterval</key>
-    <integer>20</integer>
-    <key>RunAtLoad</key>
-    <true/>
-</dict>
-</plist>
-PLIST
-sudo chown root:wheel /Library/LaunchDaemons/io.local.remoteserviced.plist
-sudo chmod 644 /Library/LaunchDaemons/io.local.remoteserviced.plist
-sudo launchctl bootout system /Library/LaunchDaemons/io.local.remoteserviced.plist 2>/dev/null || true
-sudo launchctl bootstrap system /Library/LaunchDaemons/io.local.remoteserviced.plist
-info "Watchdog installed — checks every 20 seconds and re-enables if disabled"
-
-# ==============================================================================
-# 6. TAILSCALE (OPTIONAL)
+# 5. TAILSCALE (OPTIONAL)
 # ==============================================================================
 
 read -rp "Do you want to install and configure Tailscale? [y/N]: " ts_response
@@ -227,10 +185,34 @@ if [[ "$ts_response" =~ ^[Yy]$ ]]; then
     sudo tailscale up --ssh --accept-routes --accept-dns
 fi
 
-# FileVault authenticated restart (optional — will reboot the machine)
-read -rp "Run FileVault authenticated restart now? This will REBOOT. [y/N]: " fv_response
-if [[ "$fv_response" =~ ^[Yy]$ ]]; then
-    sudo fdesetup authrestart
+# ==============================================================================
+# 6. VS CODE TUNNEL (runs last so user can authenticate interactively)
+# ==============================================================================
+
+read -rp "Do you want to enable VS Code Tunnel as a service? [y/N]: " vst_response
+if [[ "$vst_response" =~ ^[Yy]$ ]]; then
+    step "Setting up VS Code Tunnel as a service..."
+    CODE_CMD="/opt/homebrew/bin/code"
+    if [ ! -x "$CODE_CMD" ]; then
+        CODE_CMD="/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
+    fi
+    if [ ! -x "$CODE_CMD" ]; then
+        CODE_CMD="$(command -v code 2>/dev/null || true)"
+    fi
+    if [ -z "$CODE_CMD" ]; then
+        warn "VS Code CLI (code) not found — skipping tunnel setup"
+    else
+        warn "Follow the authentication prompts below to complete tunnel setup"
+        default_name=$(hostname -s)
+        read -rp "  Tunnel name [$default_name]: " tunnel_name
+        tunnel_name="${tunnel_name:-$default_name}"
+        "$CODE_CMD" tunnel service install --accept-server-license-terms --name "$tunnel_name"
+        info "VS Code Tunnel service installed and running"
+
+        # Prevent sleep so the tunnel stays reachable
+        sudo pmset -a disablesleep 1
+        info "System sleep disabled (pmset disablesleep 1) to keep tunnel reachable"
+    fi
 fi
 
 # ==============================================================================
@@ -240,3 +222,9 @@ fi
 step "Verifying..."
 java -version 2>&1 | head -1
 info "Setup complete! Open a new terminal or run: exec zsh"
+
+# FileVault authenticated restart (optional — will reboot the machine)
+read -rp "Run FileVault authenticated restart now? This will REBOOT. [y/N]: " fv_response
+if [[ "$fv_response" =~ ^[Yy]$ ]]; then
+    sudo fdesetup authrestart
+fi
