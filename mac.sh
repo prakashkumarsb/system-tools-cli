@@ -55,7 +55,7 @@ brew update
 
 formulas=(
     bash coreutils docker docker-compose git git-lfs
-    ice ipinfo-cli maven node orbstack pipx python3
+    ipinfo-cli maven node orbstack pipx python3
     shellcheck sshpass watch wget zsh-autosuggestions
     zsh-history-substring-search zsh-syntax-highlighting rsync openjdk@21
 )

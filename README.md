@@ -62,7 +62,7 @@ chmod +x mac.sh linux.sh
 | Dev Tools | git, git-lfs, maven, node, python3, pipx, openjdk@21, shellcheck, wl-clipboard |
 | Containers | docker, docker-compose, orbstack |
 | Utilities | coreutils, watch, wget, rsync, sshpass, ipinfo-cli |
-| Monitoring | ice |
+| Monitoring |
 | Networking | tailscale (optional) |
 | Remote Access | VS Code Tunnel (optional) |
 
