@@ -98,12 +98,17 @@ fi
 
 step "Uninstalling GUI applications..."
 
-casks=(
-    iterm2 visual-studio-code maccy stats jiggler lulu
-    appcleaner cleanmymac little-snitch folder-preview-pro
-    boring-notch microsoft-teams intellij-idea
-    postman purevpn whatsapp "4k-video-downloader+"
-)
+# Core casks
+core_casks=(iterm2 visual-studio-code)
+
+# Optional apps (free)
+optional_casks=(maccy stats jiggler lulu appcleaner microsoft-teams postman whatsapp google-chrome brave-browser microsoft-edge ollama-app htop btop)
+
+# Licensed apps
+licensed_casks=(cleanmymac little-snitch folder-preview-pro boring-notch intellij-idea purevpn "4k-video-downloader+")
+
+# Combine all casks
+casks=("${core_casks[@]}" "${optional_casks[@]}" "${licensed_casks[@]}")
 
 for cask in "${casks[@]}"; do
     brew uninstall --cask "$cask" 2>/dev/null && info "Removed $cask" || true
@@ -209,9 +214,9 @@ info "App caches, logs, and support files cleared"
 step "Uninstalling CLI formulas..."
 
 formulas=(
-    bash coreutils docker docker-compose git-lfs
-    ipinfo-cli maven node orbstack pipx python3
-    shellcheck sshpass watch wget zsh-autosuggestions
+    bash bat coreutils docker docker-compose gh git-lfs
+    ipinfo-cli jq maven node orbstack pipx python3
+    ripgrep shellcheck sshpass watch wget zsh-autosuggestions
     zsh-history-substring-search zsh-syntax-highlighting rsync openjdk@21
 )
 

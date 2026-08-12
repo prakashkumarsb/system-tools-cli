@@ -99,12 +99,31 @@ sudo rm -f /usr/share/keyrings/packages.microsoft.gpg
 
 step "Uninstalling CLI packages..."
 packages=(
-    docker.io docker-compose maven nodejs npm python3-pip pipx wl-clipboard
-    openjdk-21-jdk shellcheck sshpass
+    bat coreutils docker.io docker-compose
+    gh git-lfs htop
+    jq maven ncdu nodejs npm
+    openjdk-21-jdk pipx python3-pip
+    ripgrep rsync shellcheck sshpass
+    watch wget wl-clipboard
 )
 for pkg in "${packages[@]}"; do
     sudo apt-get purge -y "$pkg" 2>/dev/null && info "Removed $pkg" || true
 done
+
+# ==============================================================================
+# 6d. SSH SERVER
+# ==============================================================================
+
+step "Disabling SSH server..."
+if pidof systemd &>/dev/null; then
+    sudo systemctl disable ssh 2>/dev/null || true
+    sudo systemctl stop ssh 2>/dev/null || true
+else
+    sudo service ssh stop 2>/dev/null || true
+    sudo update-rc.d ssh remove 2>/dev/null || true
+fi
+sudo apt-get purge -y openssh-server 2>/dev/null || true
+info "SSH server disabled and removed"
 
 # ==============================================================================
 # 7. ZSH PLUGINS & OH MY ZSH

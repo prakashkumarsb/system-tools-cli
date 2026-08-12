@@ -54,9 +54,9 @@ step "Updating Homebrew..."
 brew update
 
 formulas=(
-    bash coreutils docker docker-compose git git-lfs
-    ipinfo-cli maven node orbstack pipx python3
-    shellcheck sshpass watch wget zsh-autosuggestions
+    bash bat coreutils docker docker-compose gh git git-lfs
+    ipinfo-cli jq maven node orbstack pipx python3
+    ripgrep shellcheck sshpass watch wget zsh-autosuggestions
     zsh-history-substring-search zsh-syntax-highlighting rsync openjdk@21
 )
 
@@ -74,7 +74,7 @@ done
 # ==============================================================================
 
 step "Installing core GUI applications..."
-core_casks=(iterm2 visual-studio-code maccy stats jiggler lulu)
+core_casks=(iterm2 visual-studio-code)
 
 # Check if a cask is already present (via Homebrew or manually installed .app)
 cask_installed() {
@@ -98,17 +98,20 @@ done
 curl -L https://iterm2.com/shell_integration/zsh -o ~/.iterm2_shell_integration.zsh
 
 optional_apps=(
+    maccy
+    stats
+    jiggler
+    lulu
     appcleaner
-    cleanmymac
-    little-snitch
-    folder-preview-pro
-    "TheBoredTeam/boring-notch/boring-notch"
     microsoft-teams
-    intellij-idea
     postman
-    purevpn
     whatsapp
-    "4k-video-downloader+"
+    google-chrome
+    brave-browser
+    microsoft-edge
+    ollama-app
+    htop
+    btop
 )
 
 step "Optional applications"
@@ -129,6 +132,44 @@ else
         done
     else
         warn "Skipping all optional applications."
+    fi
+fi
+
+# ==============================================================================
+# 2b. LICENSED SOFTWARE (require separate purchase/license)
+# ==============================================================================
+
+licensed_apps=(
+    cleanmymac
+    little-snitch
+    folder-preview-pro
+    "TheBoredTeam/boring-notch/boring-notch"
+    intellij-idea
+    purevpn
+    "4k-video-downloader+"
+)
+
+read -rp "Do you want to install licensed software? (require separate purchase) [y/N]: " lic_response
+if [[ "$lic_response" =~ ^[Yy]$ ]]; then
+    step "Licensed software"
+    echo "Available (these require a separate license/purchase):"
+    for app in "${licensed_apps[@]}"; do echo "  - $app"; done
+    echo ""
+
+    read -rp "Install ALL licensed apps at once? [y/N]: " lic_bulk_response
+
+    if [[ "$lic_bulk_response" =~ ^[Yy]$ ]]; then
+        info "Installing all licensed applications..."
+        brew install --cask "${licensed_apps[@]}"
+    else
+        read -rp "Would you like to pick specific licensed apps to install? [y/N]: " lic_pick_response
+        if [[ "$lic_pick_response" =~ ^[Yy]$ ]]; then
+            for app in "${licensed_apps[@]}"; do
+                ask_to_install "$app" && brew install --cask "$app" || true
+            done
+        else
+            warn "Skipping all licensed applications."
+        fi
     fi
 fi
 
@@ -164,7 +205,41 @@ step "Initializing Git LFS..."
 sudo git lfs install --system
 
 # ==============================================================================
-# 5. TAILSCALE (OPTIONAL)
+# 5. OPTIONAL SSH SERVER (remote access via password)
+# ==============================================================================
+
+read -rp "Do you want to enable SSH server (Remote Login) with password authentication? [y/N]: " ssh_response
+if [[ "$ssh_response" =~ ^[Yy]$ ]]; then
+    step "Configuring SSH server (Remote Login)..."
+
+    # Enable Remote Login (macOS built-in SSH server)
+    sudo systemsetup -setremotelogin on
+
+    SSHD_CONFIG="/etc/ssh/sshd_config"
+
+    # Back up the original config if not already done
+    [ -f "${SSHD_CONFIG}.bak" ] || sudo cp "$SSHD_CONFIG" "${SSHD_CONFIG}.bak"
+
+    # Enable password authentication
+    sudo sed -i '' 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' "$SSHD_CONFIG"
+    sudo sed -i '' 's/^#*PermitRootLogin.*/PermitRootLogin no/'               "$SSHD_CONFIG"
+    sudo sed -i '' 's/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/'    "$SSHD_CONFIG"
+
+    # Append settings if the lines didn't exist at all
+    grep -q "^PasswordAuthentication" "$SSHD_CONFIG" || echo "PasswordAuthentication yes" | sudo tee -a "$SSHD_CONFIG" > /dev/null
+    grep -q "^PermitRootLogin"        "$SSHD_CONFIG" || echo "PermitRootLogin no"           | sudo tee -a "$SSHD_CONFIG" > /dev/null
+    grep -q "^PubkeyAuthentication"   "$SSHD_CONFIG" || echo "PubkeyAuthentication yes"     | sudo tee -a "$SSHD_CONFIG" > /dev/null
+
+    # Reload sshd to apply changes
+    sudo launchctl unload /System/Library/LaunchDaemons/ssh.plist 2>/dev/null || true
+    sudo launchctl load -w /System/Library/LaunchDaemons/ssh.plist
+
+    info "SSH server enabled — connect with: ssh $(whoami)@$(ipconfig getifaddr en0 2>/dev/null || echo '<your-ip>')"
+    warn "Ensure your user account has a password set (System Settings → Users & Groups)"
+fi
+
+# ==============================================================================
+# 6. TAILSCALE (OPTIONAL)
 # ==============================================================================
 
 read -rp "Do you want to install and configure Tailscale? [y/N]: " ts_response
@@ -186,7 +261,7 @@ if [[ "$ts_response" =~ ^[Yy]$ ]]; then
 fi
 
 # ==============================================================================
-# 6. VS CODE TUNNEL (runs last so user can authenticate interactively)
+# 7. VS CODE TUNNEL (runs last so user can authenticate interactively)
 # ==============================================================================
 
 read -rp "Do you want to enable VS Code Tunnel as a service? [y/N]: " vst_response
@@ -216,7 +291,7 @@ if [[ "$vst_response" =~ ^[Yy]$ ]]; then
 fi
 
 # ==============================================================================
-# 7. VERIFICATION
+# 8. VERIFICATION
 # ==============================================================================
 
 step "Verifying..."

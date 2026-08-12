@@ -59,22 +59,28 @@ chmod +x mac.sh linux.sh
 | Category | Tools |
 |----------|-------|
 | Shell | bash, zsh-autosuggestions, zsh-syntax-highlighting, zsh-history-substring-search |
-| Dev Tools | git, git-lfs, maven, node, python3, pipx, openjdk@21, shellcheck, wl-clipboard |
+| Dev Tools | git, git-lfs, gh, maven, node, python3, pipx, openjdk@21, shellcheck, wl-clipboard |
 | Containers | docker, docker-compose, orbstack |
-| Utilities | coreutils, watch, wget, rsync, sshpass, ipinfo-cli |
-| Monitoring |
+| Utilities | coreutils, bat, jq, ripgrep, watch, wget, rsync, sshpass, ipinfo-cli |
+| Monitoring | htop, btop (optional) |
 | Networking | tailscale (optional) |
 | Remote Access | VS Code Tunnel (optional) |
 
 #### GUI Applications (Casks)
 
 **Core (installed if missing; prompts before reinstalling if already present):**
-- iTerm2, Visual Studio Code, Maccy, Stats, Jiggler, Lulu
+- iTerm2, Visual Studio Code
 
-**Optional (prompted):**
-- AppCleaner, CleanMyMac, Little Snitch, Folder Preview Pro
-- Boring Notch, Microsoft Teams, IntelliJ IDEA, Postman
-- PureVPN, WhatsApp, 4K Video Downloader+
+**Optional (free, prompted):**
+- Maccy, Stats, Jiggler, Lulu, AppCleaner
+- Microsoft Teams, Postman, WhatsApp
+- Google Chrome, Brave Browser, Microsoft Edge
+- Ollama (local LLM runner)
+- htop, btop
+
+**Licensed (require separate purchase, prompted separately):**
+- CleanMyMac, Little Snitch, Folder Preview Pro, Boring Notch
+- IntelliJ IDEA, PureVPN, 4K Video Downloader+
 
 #### Environment Configuration
 
@@ -96,9 +102,9 @@ chmod +x mac.sh linux.sh
 | Category | Tools |
 |----------|-------|
 | Shell | zsh, zsh-autosuggestions, zsh-syntax-highlighting, zsh-history-substring-search |
-| Dev Tools | git, git-lfs, maven, nodejs, python3, pipx, openjdk-21-jdk, shellcheck |
-| Containers | docker.io, docker-compose |
-| Utilities | coreutils, htop, watch, wget, rsync, sshpass, curl |
+| Dev Tools | git, git-lfs, gh, maven, nodejs, python3, pipx, openjdk-21-jdk, shellcheck |
+| Containers | docker.io, docker-compose-plugin |
+| Utilities | coreutils, bat, jq, ripgrep, htop, watch, wget, rsync, sshpass, curl |
 | Networking | tailscale (optional) |
 | Remote Access | VS Code Tunnel (optional) |
 
@@ -116,13 +122,14 @@ chmod +x mac.sh linux.sh
 
 #### System Services (optional)
 
+- SSH server (openssh-server) with password authentication enabled, firewall port 22 opened
 - VS Code Tunnel service (remote development via `code tunnel service install`)
 - Tailscale daemon installation and configuration (SSH, accept-routes, accept-dns)
 
 ## Script Behavior
 
 - **Idempotent:** Safe to re-run — won't duplicate `.zshrc` entries or reinstall Homebrew/Oh My Zsh if already present. Core GUI apps prompt before reinstalling.
-- **Interactive:** Prompts before reinstalling core apps and before installing optional apps (bulk or individual selection).
+- **Interactive:** Prompts before reinstalling core apps, before installing optional apps (bulk or individual selection), and before installing licensed software.
 - **Tailscale opt-in:** Asked once at the start; skipped entirely if declined.
 
 ## Prerequisites
@@ -159,8 +166,9 @@ setup/
 Edit the arrays in `mac.sh` to add/remove packages:
 
 - `formulas=( ... )` — CLI tools installed via `brew install`
-- `optional_apps=( ... )` — GUI apps offered for optional installation
-- Core casks line — GUI apps always installed
+- `core_casks=( ... )` — GUI apps always installed (prompts if already present)
+- `optional_apps=( ... )` — Free GUI apps offered for optional installation
+- `licensed_apps=( ... )` — Paid GUI apps offered for optional installation
 
 ## License
 

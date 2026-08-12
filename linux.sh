@@ -36,11 +36,14 @@ sudo apt-get update
 
 step "Installing CLI tools..."
 packages=(
-    bash curl wget git git-lfs rsync htop watch coreutils
-    zsh shellcheck sshpass wl-clipboard
+    bash bat coreutils curl
     docker.io docker-compose-plugin
-    maven nodejs npm python3 python3-pip pipx
-    openjdk-21-jdk
+    git git-lfs gh htop
+    jq maven nodejs npm
+    openjdk-21-jdk pipx python3 python3-pip
+    ripgrep rsync shellcheck sshpass
+    watch wget wl-clipboard
+    zsh
 )
 sudo apt-get install -y "${packages[@]}"
 
@@ -104,7 +107,47 @@ step "Initializing Git LFS..."
 sudo git lfs install --system
 
 # ==============================================================================
-# 5. TAILSCALE (OPTIONAL)
+# 5. OPTIONAL SSH SERVER (remote access via password)
+# ==============================================================================
+
+read -rp "Do you want to install and configure SSH server (password authentication)? [y/N]: " ssh_response
+if [[ "$ssh_response" =~ ^[Yy]$ ]]; then
+    step "Setting up SSH server..."
+
+    sudo apt-get install -y openssh-server
+
+    # Enable password authentication
+    SSHD_CONFIG="/etc/ssh/sshd_config"
+    sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' "$SSHD_CONFIG"
+    sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' "$SSHD_CONFIG"
+    sudo sed -i 's/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/' "$SSHD_CONFIG"
+
+    # Append settings if they weren't already present
+    grep -q "^PasswordAuthentication" "$SSHD_CONFIG" || echo "PasswordAuthentication yes" | sudo tee -a "$SSHD_CONFIG" > /dev/null
+    grep -q "^PermitRootLogin" "$SSHD_CONFIG"       || echo "PermitRootLogin no"           | sudo tee -a "$SSHD_CONFIG" > /dev/null
+    grep -q "^PubkeyAuthentication" "$SSHD_CONFIG"  || echo "PubkeyAuthentication yes"     | sudo tee -a "$SSHD_CONFIG" > /dev/null
+
+    # Open firewall port 22 if ufw is active
+    if command -v ufw &>/dev/null && sudo ufw status | grep -q "Status: active"; then
+        sudo ufw allow ssh
+        info "Firewall: port 22 allowed"
+    fi
+
+    # Enable and start sshd (systemd or sysVinit)
+    if pidof systemd &>/dev/null; then
+        sudo systemctl enable ssh
+        sudo systemctl restart ssh
+    else
+        sudo update-rc.d ssh defaults
+        sudo service ssh restart
+    fi
+
+    info "SSH server running — connect with: ssh $(whoami)@$(hostname -I | awk '{print $1}')"
+    warn "Make sure your user account has a password set: passwd $(whoami)"
+fi
+
+# ==============================================================================
+# 6. TAILSCALE (OPTIONAL)
 # ==============================================================================
 
 read -rp "Do you want to install and configure Tailscale? [y/N]: " ts_response
@@ -143,7 +186,7 @@ INITSCRIPT
 fi
 
 # ==============================================================================
-# 6. VS CODE TUNNEL (runs last so user can authenticate interactively)
+# 7. VS CODE TUNNEL (runs last so user can authenticate interactively)
 # ==============================================================================
 
 read -rp "Do you want to enable VS Code Tunnel as a service? [y/N]: " vst_response
@@ -169,7 +212,7 @@ if [[ "$vst_response" =~ ^[Yy]$ ]]; then
 fi
 
 # ==============================================================================
-# 7. VERIFICATION
+# 8. VERIFICATION
 # ==============================================================================
 
 step "Verifying..."
