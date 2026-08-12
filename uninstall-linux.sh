@@ -1,150 +1,69 @@
 #!/bin/bash
-set -uo pipefail
+set -euo pipefail
 
+# ==============================================================================
+# uninstall-linux.sh — Distro dispatcher for uninstall scripts
+# ==============================================================================
+
+GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
 NC='\033[0m'
 
 info()  { echo -e "${GREEN}[✓]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
-step()  { echo -e "\n${RED}[x]${NC} $1"; }
+die()   { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 
-echo -e "${RED}╔══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${RED}║  WARNING: This will uninstall everything from linux.sh  ║${NC}"
-echo -e "${RED}╚══════════════════════════════════════════════════════════╝${NC}"
-echo ""
-read -rp "Are you sure you want to proceed? [y/N]: " confirm
-[[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
-
-sudo -v
-while true; do sudo -n true; sleep 55; kill -0 "$$" || exit; done 2>/dev/null &
-
-# ==============================================================================
-# 1. REMOTE ACCESS
-# ==============================================================================
-
-step "Removing VS Code Tunnel service..."
-CODE_CMD="$(command -v code 2>/dev/null || true)"
-if [ -n "$CODE_CMD" ]; then
-    "$CODE_CMD" tunnel service uninstall 2>/dev/null || true
-    info "VS Code Tunnel service removed"
-else
-    info "VS Code CLI not found, skipping tunnel service removal"
+if [ ! -f /etc/os-release ]; then
+    die "/etc/os-release not found — cannot detect distro."
 fi
-sudo systemctl unmask sleep.target suspend.target hibernate.target hybrid-sleep.target 2>/dev/null || true
-info "System sleep/suspend re-enabled"
+. /etc/os-release
 
-# ==============================================================================
-# 2. TAILSCALE
-# ==============================================================================
+DISTRO_ID="${ID:-unknown}"
+DISTRO_LIKE="${ID_LIKE:-}"
 
-step "Removing Tailscale..."
-if command -v tailscale &>/dev/null; then
-    sudo tailscale down 2>/dev/null || true
-    if pidof systemd &>/dev/null; then
-        sudo systemctl disable tailscaled 2>/dev/null || true
-        sudo systemctl stop tailscaled 2>/dev/null || true
-    else
-        sudo /etc/init.d/tailscaled stop 2>/dev/null || true
-        sudo update-rc.d tailscaled remove 2>/dev/null || true
-        sudo rm -f /etc/init.d/tailscaled
-    fi
-    sudo apt-get purge -y tailscale 2>/dev/null || true
-    info "Tailscale removed"
-else
-    info "Tailscale not installed, skipping"
-fi
+echo -e "${RED}"
+echo "  Linux Uninstall — Distro Dispatcher"
+echo "  Detected: ${PRETTY_NAME:-$DISTRO_ID}"
+echo -e "${NC}"
 
-# ==============================================================================
-# 3. GIT LFS
-# ==============================================================================
+case "$DISTRO_ID" in
+    debian|ubuntu|linuxmint|mx|mxlinux|pop|elementary|zorin|kali|raspbian)
+        SCRIPT="uninstall-linux-debian.sh"
+        ;;
+    rhel|centos|fedora|rocky|almalinux|ol|scientific)
+        SCRIPT="uninstall-linux-rhel.sh"
+        ;;
+    *)
+        if [[ "$DISTRO_LIKE" == *"debian"* || "$DISTRO_LIKE" == *"ubuntu"* ]]; then
+            SCRIPT="uninstall-linux-debian.sh"
+        elif [[ "$DISTRO_LIKE" == *"rhel"* || "$DISTRO_LIKE" == *"fedora"* ]]; then
+            SCRIPT="uninstall-linux-rhel.sh"
+        else
+            echo ""
+            echo -e "${YELLOW}  ⚠ Unsupported Linux distribution: ${PRETTY_NAME:-$DISTRO_ID}${NC}"
+            echo ""
+            echo "  This script currently supports:"
+            echo "    • Debian / Ubuntu / MX Linux                   (apt-based)"
+            echo "    • RHEL / CentOS / Fedora / Rocky / AlmaLinux   (dnf-based)"
+            echo ""
+            echo "  If you believe your distro should be supported, please open an issue at:"
+            echo "  https://github.com/sb-pk/setup/issues"
+            echo ""
+            exit 1
+        fi
+        ;;
+esac
 
-step "Removing Git LFS system config..."
-sudo git lfs uninstall --system 2>/dev/null || true
-info "Git LFS system hooks removed"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TARGET="${SCRIPT_DIR}/${SCRIPT}"
 
-# ==============================================================================
-# 4. ZSHRC CLEANUP
-# ==============================================================================
-
-step "Cleaning .zshrc entries..."
-lines_to_remove=(
-    'source $ZSH_CUSTOM/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh'
-    'source $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh'
-    'source $ZSH_CUSTOM/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh'
-    'export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64'
-    'export PATH="$JAVA_HOME/bin:$PATH"'
-)
-
-if [ -f ~/.zshrc ]; then
-    for line in "${lines_to_remove[@]}"; do
-        sed -i "\|${line}|d" ~/.zshrc
-    done
-    info ".zshrc entries removed"
+if [ ! -f "$TARGET" ]; then
+    REPO_BASE="https://raw.githubusercontent.com/sb-pk/setup/main"
+    warn "Local $SCRIPT not found — fetching from GitHub..."
+    curl -fsSL "${REPO_BASE}/${SCRIPT}" | bash
+    exit $?
 fi
 
-# ==============================================================================
-# 5. GUI APPLICATIONS
-# ==============================================================================
-
-step "Uninstalling GUI applications..."
-sudo apt-get purge -y code 2>/dev/null && info "Removed VS Code" || true
-sudo rm -f /etc/apt/sources.list.d/vscode.list
-sudo rm -f /usr/share/keyrings/packages.microsoft.gpg
-
-# ==============================================================================
-# 6. CLI PACKAGES
-# ==============================================================================
-
-step "Uninstalling CLI packages..."
-packages=(
-    bat coreutils docker.io docker-compose
-    gh git-lfs htop
-    jq maven ncdu nodejs npm
-    openjdk-21-jdk pipx python3-pip
-    ripgrep rsync shellcheck sshpass
-    watch wget wl-clipboard
-)
-for pkg in "${packages[@]}"; do
-    sudo apt-get purge -y "$pkg" 2>/dev/null && info "Removed $pkg" || true
-done
-
-# ==============================================================================
-# 6d. SSH SERVER
-# ==============================================================================
-
-step "Disabling SSH server..."
-if pidof systemd &>/dev/null; then
-    sudo systemctl disable ssh 2>/dev/null || true
-    sudo systemctl stop ssh 2>/dev/null || true
-else
-    sudo service ssh stop 2>/dev/null || true
-    sudo update-rc.d ssh remove 2>/dev/null || true
-fi
-sudo apt-get purge -y openssh-server 2>/dev/null || true
-info "SSH server disabled and removed"
-
-# ==============================================================================
-# 7. ZSH PLUGINS & OH MY ZSH
-# ==============================================================================
-
-step "Removing Zsh plugins and Oh My Zsh..."
-rm -rf "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/zsh-autosuggestions"
-rm -rf "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting"
-rm -rf "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/zsh-history-substring-search"
-rm -rf "$HOME/.oh-my-zsh"
-info "Oh My Zsh and plugins removed"
-
-# Restore default shell
-if [ "$SHELL" != "/bin/bash" ]; then
-    chsh -s /bin/bash
-    info "Default shell restored to bash"
-fi
-
-step "Cleaning up..."
-sudo apt-get autoremove -y
-sudo apt-get autoclean
-
-echo ""
-info "Uninstall complete. Open a new terminal for changes to take effect."
+info "Running $SCRIPT for ${PRETTY_NAME:-$DISTRO_ID}..."
+bash "$TARGET"
