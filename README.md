@@ -65,25 +65,24 @@ chmod +x linux.sh
 
 | Category | Tools |
 |----------|-------|
-| Shell | bash, zsh-autosuggestions, zsh-syntax-highlighting, zsh-history-substring-search |
+| Shell | bash, zsh, zsh-autosuggestions, zsh-syntax-highlighting, zsh-history-substring-search, starship |
 | Dev Tools | git, git-lfs, gh, maven, node, python3, pipx, openjdk@21, shellcheck |
-| Containers | docker, docker-compose, orbstack |
-| Utilities | coreutils, bat, jq, ripgrep, watch, wget, rsync, sshpass, ipinfo-cli |
-| Monitoring | htop, btop (optional) |
+| Containers | docker, docker-compose |
+| Utilities | coreutils, bat, jq, yq, parallel, ripgrep, watch, wget, rsync, sshpass, ipinfo-cli |
+| Monitoring | htop, btop |
 | Networking | tailscale (optional) |
 | Remote Access | SSH server (optional), VS Code Tunnel (optional) |
 
 #### GUI Applications (Casks)
 
 **Core (installed if missing; prompts before reinstalling if already present):**
-- iTerm2, Visual Studio Code
+- iTerm2, Visual Studio Code, OrbStack
 
 **Optional (free, prompted):**
 - Maccy, Stats, Jiggler, Lulu, AppCleaner
 - Microsoft Teams, Postman, WhatsApp
 - Google Chrome, Brave Browser, Microsoft Edge
 - Ollama (local LLM runner)
-- htop, btop
 
 **Licensed (require separate purchase, prompted separately):**
 - CleanMyMac, Little Snitch, Folder Preview Pro, Boring Notch
@@ -92,6 +91,7 @@ chmod +x linux.sh
 #### Environment Configuration
 
 - Oh My Zsh installation
+- Starship shell prompt initialization
 - Zsh plugin sourcing (autosuggestions, syntax highlighting, history substring search)
 - OpenJDK 21 linked to system Java and added to PATH
 - Git LFS initialized system-wide
@@ -111,10 +111,10 @@ chmod +x linux.sh
 
 | Category | Tools |
 |----------|-------|
-| Shell | zsh, zsh-autosuggestions, zsh-syntax-highlighting, zsh-history-substring-search |
+| Shell | bash, zsh, zsh-autosuggestions, zsh-syntax-highlighting, zsh-history-substring-search, starship |
 | Dev Tools | git, git-lfs, gh, maven, nodejs (Node 20 LTS), python3, pipx, openjdk-21-jdk, shellcheck |
 | Containers | docker-ce, docker-compose-plugin (via Docker official apt repo) |
-| Utilities | coreutils, bat, jq, ripgrep, htop, watch, wget, rsync, sshpass, curl |
+| Utilities | coreutils, bat, jq, yq, parallel, ripgrep, htop, watch, wget, rsync, sshpass, curl, wl-clipboard |
 | Networking | tailscale (optional) |
 | Remote Access | SSH server (optional), VS Code Tunnel (optional) |
 
@@ -125,6 +125,7 @@ chmod +x linux.sh
 #### Environment Configuration
 
 - Oh My Zsh + plugins (cloned from GitHub)
+- Starship shell prompt initialization
 - OpenJDK 21 added to PATH via JAVA_HOME (auto-detected, arch-aware)
 - Git LFS initialized system-wide
 - Zsh set as default shell
@@ -146,10 +147,10 @@ chmod +x linux.sh
 
 | Category | Tools |
 |----------|-------|
-| Shell | zsh, zsh-autosuggestions, zsh-syntax-highlighting, zsh-history-substring-search |
+| Shell | bash, zsh, zsh-autosuggestions, zsh-syntax-highlighting, zsh-history-substring-search, starship |
 | Dev Tools | git, git-lfs, gh, maven, nodejs (Node 20 LTS), python3, pipx, java-21-openjdk-devel, shellcheck |
 | Containers | docker-ce, docker-compose-plugin (via Docker official dnf repo) |
-| Utilities | coreutils, bat (RHEL 9+/Fedora), jq, ripgrep, htop, wget, rsync, sshpass, curl |
+| Utilities | coreutils, bat (RHEL 9+/Fedora), jq, yq, parallel, ripgrep, htop, wget, rsync, sshpass, curl, wl-clipboard |
 | Networking | tailscale (optional) |
 | Remote Access | SSH server (optional), VS Code Tunnel (optional) |
 
@@ -175,6 +176,22 @@ chmod +x linux.sh
 - Tailscale
 
 ---
+
+## Command Line Options
+
+All setup and uninstall scripts accept standard CLI flags for automated or dry-run execution:
+
+| Flag | Long Option | Description |
+|------|-------------|-------------|
+| `-y` | `--non-interactive` | Bypasses interactive prompts (auto-accepts optional app bulk installs; skips licensed/SSH prompts) |
+| | `--dry-run` | Preview actions and command execution without making system changes |
+| `-h` | `--help` | Display script usage information and options |
+
+```bash
+# Example: Non-interactive dry run
+./mac.sh --dry-run -y
+./linux.sh --dry-run -y
+```
 
 ## Script Behavior
 

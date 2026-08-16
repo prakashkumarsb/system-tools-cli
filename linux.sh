@@ -16,7 +16,9 @@ info()  { echo -e "${GREEN}[✓]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
 die()   { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 
-# Read /etc/os-release
+# Forward all CLI arguments to delegate scripts
+ARGS=("$@")
+
 if [ ! -f /etc/os-release ]; then
     die "/etc/os-release not found — cannot detect distro."
 fi
@@ -30,7 +32,6 @@ echo "  Linux Setup — Distro Dispatcher"
 echo "  Detected: ${PRETTY_NAME:-$DISTRO_ID}"
 echo -e "${NC}"
 
-# Determine which script to run
 case "$DISTRO_ID" in
     debian|ubuntu|linuxmint|mx|mxlinux|pop|elementary|zorin|kali|raspbian)
         SCRIPT="linux-debian.sh"
@@ -39,7 +40,6 @@ case "$DISTRO_ID" in
         SCRIPT="linux-rhel.sh"
         ;;
     *)
-        # Fall back to ID_LIKE
         if [[ "$DISTRO_LIKE" == *"debian"* || "$DISTRO_LIKE" == *"ubuntu"* ]]; then
             SCRIPT="linux-debian.sh"
         elif [[ "$DISTRO_LIKE" == *"rhel"* || "$DISTRO_LIKE" == *"fedora"* ]]; then
@@ -60,16 +60,15 @@ case "$DISTRO_ID" in
         ;;
 esac
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET="${SCRIPT_DIR}/${SCRIPT}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo "")"
+TARGET="${SCRIPT_DIR:+${SCRIPT_DIR}/}${SCRIPT}"
 
-# If running via curl (no local file), fetch and run directly
 if [ ! -f "$TARGET" ]; then
     REPO_BASE="https://raw.githubusercontent.com/sb-pk/setup/main"
     warn "Local $SCRIPT not found — fetching from GitHub..."
-    curl -fsSL "${REPO_BASE}/${SCRIPT}" | bash
+    bash -c "$(curl -fsSL "${REPO_BASE}/${SCRIPT}")" -- "${ARGS[@]}"
     exit $?
 fi
 
 info "Running $SCRIPT for ${PRETTY_NAME:-$DISTRO_ID}..."
-bash "$TARGET"
+bash "$TARGET" "${ARGS[@]}"

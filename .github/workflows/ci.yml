@@ -1,0 +1,40 @@
+name: CI & Quality Assurance
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  shellcheck:
+    name: ShellCheck Linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ShellCheck
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          shellcheck -e SC1091,SC2016 ./*.sh
+
+  test-linux:
+    name: Test Linux Scripts (Dry-Run)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        distro: ['ubuntu:24.04', 'debian:12', 'fedora:40', 'rockylinux:9']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test linux.sh on ${{ matrix.distro }}
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/work -w /work ${{ matrix.distro }} \
+            bash -c "apt-get update && apt-get install -y sudo || dnf install -y sudo; ./linux.sh --dry-run"
+
+  test-mac:
+    name: Test macOS Script (Dry-Run)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test mac.sh
+        run: |
+          ./mac.sh --dry-run
