@@ -337,7 +337,76 @@ step "Initializing Git LFS..."
 run_cmd sudo git lfs install --system
 
 # ==============================================================================
-# 5. OPTIONAL SSH SERVER
+# 5. LXQT XSCREENSAVER AUTO-LOCK
+# ==============================================================================
+
+# Detect LXQt desktop environment (Lubuntu, Debian+LXQt, Ubuntu+LXQt, MX Linux+LXQt, etc.)
+# LXQt does not ship its own screensaver; xscreensaver is the standard choice for X11 sessions.
+if dpkg -l | grep -q lxqt-core 2>/dev/null || [[ -n "${XDG_CURRENT_DESKTOP:-}" && "${XDG_CURRENT_DESKTOP}" == *"LXQt"* ]]; then
+    step "Configuring xscreensaver auto-lock for LXQt..."
+    if [ "$DRY_RUN" = false ]; then
+        # Install xscreensaver if not present
+        if ! command -v xscreensaver &>/dev/null; then
+            sudo apt-get install -y xscreensaver
+        fi
+        # Create xscreensaver config with 5-minute blank + immediate lock
+        cat << 'XSCREENSAVER_EOF' > ~/.xscreensaver
+timeout:        0:05:00
+lock:           True
+lockTimeout:    0:00:00
+XSCREENSAVER_EOF
+        info "Created ~/.xscreensaver with 5-minute auto-lock"
+        # Add xscreensaver daemon to LXQt autostart
+        AUTOSTART_DIR="$HOME/.config/autostart"
+        mkdir -p "$AUTOSTART_DIR"
+        cat << 'AUTOSTART_EOF' > "$AUTOSTART_DIR/xscreensaver.desktop"
+[Desktop Entry]
+Type=Application
+Name=XScreenSaver
+Exec=xscreensaver -nosplash
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+AUTOSTART_EOF
+        info "Added xscreensaver to autostart"
+    else
+        info "[DRY-RUN] Would configure xscreensaver auto-lock for LXQt"
+    fi
+fi
+
+# ==============================================================================
+# 5b. XFCE SCREENSAVER AUTO-LOCK (MX Linux / Xubuntu / Debian+XFCE)
+# ==============================================================================
+
+# Detect XFCE desktop environment
+if [[ -n "${XDG_CURRENT_DESKTOP:-}" && "${XDG_CURRENT_DESKTOP}" == *"XFCE"* ]] || command -v xfce4-session &>/dev/null; then
+    step "Configuring xfce4-screensaver auto-lock for XFCE..."
+    if [ "$DRY_RUN" = false ]; then
+        # Install xfce4-screensaver if not present (default on MX Linux)
+        if ! command -v xfce4-screensaver &>/dev/null; then
+            sudo apt-get install -y xfce4-screensaver
+        fi
+
+        # Configure via xfconf-query (XFCE's settings backend)
+        # Enable screensaver
+        xfconf-query -c xfce4-screensaver -p /saver/enabled -s true --create -t bool
+        # Set idle timeout to 5 minutes (300 seconds)
+        xfconf-query -c xfce4-screensaver -p /saver/idle-activation/delay -s 5 --create -t int
+        # Enable lock on activation
+        xfconf-query -c xfce4-screensaver -p /lock/enabled -s true --create -t bool
+        # Lock immediately when screensaver activates (0 minutes delay)
+        xfconf-query -c xfce4-screensaver -p /lock/saver-activation/delay -s 0 --create -t int
+        # Also lock on suspend/sleep
+        xfconf-query -c xfce4-screensaver -p /lock/sleep-activation/enabled -s true --create -t bool
+
+        info "Configured xfce4-screensaver: 5-minute idle → immediate lock"
+    else
+        info "[DRY-RUN] Would configure xfce4-screensaver auto-lock for XFCE"
+    fi
+fi
+
+# ==============================================================================
+# 6. OPTIONAL SSH SERVER
 # ==============================================================================
 
 if [ "$NON_INTERACTIVE" = true ]; then
@@ -366,7 +435,7 @@ if [[ "$ssh_response" =~ ^[Yy]$ && "$DRY_RUN" = false ]]; then
 fi
 
 # ==============================================================================
-# 6. TAILSCALE (OPTIONAL)
+# 7. TAILSCALE (OPTIONAL)
 # ==============================================================================
 
 if [ "$NON_INTERACTIVE" = true ]; then
@@ -386,7 +455,7 @@ if [[ "$ts_response" =~ ^[Yy]$ && "$DRY_RUN" = false ]]; then
 fi
 
 # ==============================================================================
-# 7. VS CODE TUNNEL
+# 8. VS CODE TUNNEL
 # ==============================================================================
 
 if [ "$NON_INTERACTIVE" = true ]; then
@@ -413,7 +482,7 @@ if [[ "$vst_response" =~ ^[Yy]$ && "$DRY_RUN" = false ]]; then
 fi
 
 # ==============================================================================
-# 8. STATE MANIFEST & VERIFICATION
+# 9. STATE MANIFEST & VERIFICATION
 # ==============================================================================
 
 step "Writing installation manifest..."
