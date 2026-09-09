@@ -1,69 +1,27 @@
 #!/bin/bash
 set -euo pipefail
 
+# Load common library: reference locally if present; fetch from GitHub if running remotely
+export REPO_BASE="${REPO_BASE:-https://raw.githubusercontent.com/prakashkumarsb/system-tools-cli/main}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo "")"
+if [ -n "$SCRIPT_DIR" ] && [ -f "${SCRIPT_DIR}/common.sh" ]; then
+    # shellcheck source=/dev/null
+    . "${SCRIPT_DIR}/common.sh"
+else
+    # shellcheck source=/dev/null
+    . <(curl -fsSL "${REPO_BASE}/common.sh")
+fi
+
 # ==============================================================================
 # linux-rhel.sh — Setup script for RHEL/CentOS/Fedora/Rocky/AlmaLinux (dnf-based)
 # ==============================================================================
 
 # ==============================================================================
-# CLI FLAGS & NON-INTERACTIVE MODE
+# CLI FLAGS, LOGGING & ENVIRONMENT
 # ==============================================================================
 
-NON_INTERACTIVE=false
-DRY_RUN=false
-
-usage() {
-    echo "Usage: $0 [OPTIONS]"
-    echo ""
-    echo "Options:"
-    echo "  -y, --non-interactive  Run without interactive prompts (assume yes)"
-    echo "  --dry-run              Show actions without making changes"
-    echo "  -h, --help             Show this help message"
-    exit 0
-}
-
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -y|--non-interactive) NON_INTERACTIVE=true; shift ;;
-        --dry-run)           DRY_RUN=true; shift ;;
-        -h|--help)            usage ;;
-        *)                    echo "Unknown argument: $1"; usage ;;
-    esac
-done
-
-# ==============================================================================
-# HELPERS & OBSERVABILITY
-# ==============================================================================
-
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-info()  { echo -e "${GREEN}[✓]${NC} $1"; }
-warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
-step()  { echo -e "\n${GREEN}==>${NC} $1"; }
-
-zshrc_add() {
-    if [ "$DRY_RUN" = true ]; then
-        info "[DRY-RUN] Would add to ~/.zshrc: $1"
-    else
-        grep -qF "$1" ~/.zshrc 2>/dev/null || echo "$1" >> ~/.zshrc
-    fi
-}
-
-run_cmd() {
-    if [ "$DRY_RUN" = true ]; then
-        info "[DRY-RUN] Would run: $*"
-    else
-        "$@"
-    fi
-}
-
-LOG_DIR="$HOME/.local/state/setup"
-mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/linux-rhel-setup-$(date +%Y%m%d_%H%M%S).log"
-exec > >(tee -a "$LOG_FILE") 2>&1
-info "Logging execution output to $LOG_FILE"
+init_cli_flags "$@"
+init_logging "linux-rhel-setup"
 
 . /etc/os-release 2>/dev/null || true
 DISTRO_ID="${ID:-unknown}"
@@ -81,24 +39,7 @@ get_docker_repo_url() {
     esac
 }
 
-# ==============================================================================
-# SUDO KEEP-ALIVE WITH TRAP CLEANUP
-# ==============================================================================
-
-if [ "$DRY_RUN" = false ]; then
-    sudo -v
-    while true; do sudo -n true; sleep 55; kill -0 "$$" || exit; done 2>/dev/null &
-    SUDO_PID=$!
-
-    cleanup() {
-        local exit_code=$?
-        kill "$SUDO_PID" 2>/dev/null || true
-        if [ $exit_code -ne 0 ]; then
-            warn "Process exited with code $exit_code"
-        fi
-    }
-    trap cleanup EXIT INT TERM
-fi
+init_sudo_keepalive
 
 # ==============================================================================
 # 1. BASE CLI TOOLS & PACKAGES
@@ -192,8 +133,6 @@ if [[ "${INSTALL_MAVEN_MANUALLY:-false}" == "true" && "$DRY_RUN" = false ]]; the
     sudo ln -sfn "/opt/apache-maven-${MAVEN_VERSION}" /opt/maven
     sudo ln -sfn /opt/maven/bin/mvn /usr/local/bin/mvn
     rm -f /tmp/maven.tar.gz
-    zshrc_add 'export M2_HOME=/opt/maven'
-    zshrc_add 'export PATH="$M2_HOME/bin:$PATH"'
 fi
 
 if [[ "${INSTALL_PIPX_VIA_PIP:-false}" == "true" && "$DRY_RUN" = false ]]; then
@@ -231,7 +170,6 @@ fi
 if ! command -v starship &>/dev/null && [ "$DRY_RUN" = false ]; then
     curl -fsSL https://starship.rs/install.sh | sh -s -- -y || true
 fi
-zshrc_add 'eval "$(starship init zsh)"'
 
 # ==============================================================================
 # 2. ZSH & OH MY ZSH
@@ -261,6 +199,11 @@ fi
 zshrc_add 'source $ZSH_CUSTOM/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh'
 zshrc_add 'source $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh'
 zshrc_add 'source $ZSH_CUSTOM/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh'
+if [ -d /opt/maven ]; then
+    zshrc_add 'export M2_HOME=/opt/maven'
+    zshrc_add 'export PATH="$M2_HOME/bin:$PATH"'
+fi
+zshrc_add 'eval "$(starship init zsh)"'
 
 # ==============================================================================
 # 3. GUI APPLICATIONS
@@ -355,7 +298,7 @@ if [[ "$vst_response" =~ ^[Yy]$ && "$DRY_RUN" = false ]]; then
         default_name=$(hostname -s)
         tunnel_name="${default_name}"
         if [ "$NON_INTERACTIVE" = false ]; then
-            read -rp "  Tunnel name [$default_name]: " input_name
+            read -rp "  Tunnel name [$default_name]: " input_name || input_name=""
             tunnel_name="${input_name:-$default_name}"
         fi
         "$CODE_CMD" tunnel service install --accept-server-license-terms --name "$tunnel_name"

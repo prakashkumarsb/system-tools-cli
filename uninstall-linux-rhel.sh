@@ -1,44 +1,20 @@
 #!/bin/bash
 set -uo pipefail
 
-NON_INTERACTIVE=false
-DRY_RUN=false
+# Load common library: reference locally if present; fetch from GitHub if running remotely
+export REPO_BASE="${REPO_BASE:-https://raw.githubusercontent.com/prakashkumarsb/system-tools-cli/main}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo "")"
+if [ -n "$SCRIPT_DIR" ] && [ -f "${SCRIPT_DIR}/common.sh" ]; then
+    # shellcheck source=/dev/null
+    . "${SCRIPT_DIR}/common.sh"
+else
+    # shellcheck source=/dev/null
+    . <(curl -fsSL "${REPO_BASE}/common.sh")
+fi
 
-usage() {
-    echo "Usage: $0 [OPTIONS]"
-    echo ""
-    echo "Options:"
-    echo "  -y, --non-interactive  Run without interactive confirmation"
-    echo "  --dry-run              Show actions without deleting"
-    echo "  -h, --help             Show this help message"
-    exit 0
-}
+init_cli_flags "$@"
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -y|--non-interactive) NON_INTERACTIVE=true; shift ;;
-        --dry-run)           DRY_RUN=true; shift ;;
-        -h|--help)            usage ;;
-        *)                    echo "Unknown argument: $1"; usage ;;
-    esac
-done
-
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-NC='\033[0m'
-
-info()  { echo -e "${GREEN}[✓]${NC} $1"; }
-warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
 step()  { echo -e "\n${RED}[x]${NC} $1"; }
-
-run_cmd() {
-    if [ "$DRY_RUN" = true ]; then
-        info "[DRY-RUN] Would run: $*"
-    else
-        "$@"
-    fi
-}
 
 echo -e "${RED}╔════════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${RED}║  WARNING: This will uninstall everything from linux-rhel.sh   ║${NC}"
@@ -46,21 +22,25 @@ echo -e "${RED}╚════════════════════�
 echo ""
 
 if [ "$NON_INTERACTIVE" = false ]; then
-    read -rp "Are you sure you want to proceed? [y/N]: " confirm
+    read -rp "Are you sure you want to proceed? [y/N]: " confirm || confirm="n"
     [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
 fi
 
-if [ "$DRY_RUN" = false ]; then
-    sudo -v
-    while true; do sudo -n true; sleep 55; kill -0 "$$" || exit; done 2>/dev/null &
-    SUDO_PID=$!
-    trap 'kill "$SUDO_PID" 2>/dev/null || true' EXIT INT TERM
-fi
+init_sudo_keepalive
 
 step "Removing VS Code Tunnel service..."
 CODE_CMD="$(command -v code 2>/dev/null || true)"
 if [ -n "$CODE_CMD" ]; then
     run_cmd "$CODE_CMD" tunnel service uninstall 2>/dev/null || true
+fi
+if [ "$DRY_RUN" = false ]; then
+    sudo systemctl unmask sleep.target suspend.target hibernate.target hybrid-sleep.target 2>/dev/null || true
+fi
+
+step "Removing Docker..."
+if [ "$DRY_RUN" = false ]; then
+    sudo systemctl disable --now docker.service docker.socket containerd.service 2>/dev/null || true
+    sudo dnf -y remove docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin 2>/dev/null || true
 fi
 
 step "Removing Tailscale..."
@@ -87,20 +67,28 @@ lines_to_remove=(
     'source $ZSH_CUSTOM/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh'
     'source $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh'
     'source $ZSH_CUSTOM/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh'
-    'export JAVA_HOME='
+    'export M2_HOME=/opt/maven'
+    'export PATH="$M2_HOME/bin:$PATH"'
     'export PATH="$JAVA_HOME/bin:$PATH"'
     'eval "$(starship init zsh)"'
 )
-if [ -f ~/.zshrc ] && [ "$DRY_RUN" = false ]; then
-    for line in "${lines_to_remove[@]}"; do
-        sed -i "\|${line}|d" ~/.zshrc
-    done
-fi
+for line in "${lines_to_remove[@]}"; do
+    zshrc_remove "$line"
+done
+zshrc_remove "export JAVA_HOME="
 
 step "Uninstalling VS Code..."
 if [ "$DRY_RUN" = false ]; then
     sudo dnf -y remove code 2>/dev/null || true
+fi
+
+step "Removing third-party YUM repositories & manual installs..."
+if [ "$DRY_RUN" = false ]; then
     sudo rm -f /etc/yum.repos.d/vscode.repo
+    sudo rm -f /etc/yum.repos.d/gh-cli.repo
+    sudo rm -f /etc/yum.repos.d/docker-ce.repo
+    sudo rm -f /etc/yum.repos.d/nodesource*.repo
+    sudo rm -rf /opt/maven /opt/apache-maven-* /usr/local/bin/mvn /tmp/maven.tar.gz
 fi
 
 step "Uninstalling CLI packages..."

@@ -1,93 +1,33 @@
 #!/bin/bash
 set -euo pipefail
 
-# ==============================================================================
-# CLI FLAGS & NON-INTERACTIVE MODE
-# ==============================================================================
-
-NON_INTERACTIVE=false
-DRY_RUN=false
-
-usage() {
-    echo "Usage: $0 [OPTIONS]"
-    echo ""
-    echo "Options:"
-    echo "  -y, --non-interactive  Run without interactive prompts (assume yes)"
-    echo "  --dry-run              Show actions without making changes"
-    echo "  -h, --help             Show this help message"
-    exit 0
-}
-
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -y|--non-interactive) NON_INTERACTIVE=true; shift ;;
-        --dry-run)           DRY_RUN=true; shift ;;
-        -h|--help)            usage ;;
-        *)                    echo "Unknown argument: $1"; usage ;;
-    esac
-done
+# Load common library: reference locally if present; fetch from GitHub if running remotely
+export REPO_BASE="${REPO_BASE:-https://raw.githubusercontent.com/prakashkumarsb/system-tools-cli/main}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo "")"
+if [ -n "$SCRIPT_DIR" ] && [ -f "${SCRIPT_DIR}/common.sh" ]; then
+    # shellcheck source=/dev/null
+    . "${SCRIPT_DIR}/common.sh"
+else
+    # shellcheck source=/dev/null
+    . <(curl -fsSL "${REPO_BASE}/common.sh")
+fi
 
 # ==============================================================================
-# HELPERS & OBSERVABILITY
+# CLI FLAGS, LOGGING & SUDO KEEP-ALIVE
 # ==============================================================================
 
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-info()  { echo -e "${GREEN}[✓]${NC} $1"; }
-warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
-step()  { echo -e "\n${GREEN}==>${NC} $1"; }
+init_cli_flags "$@"
+init_logging "mac-setup"
+init_sudo_keepalive
 
 ask_to_install() {
     local app_name=$1
     if [ "$NON_INTERACTIVE" = true ]; then
         return 0
     fi
-    read -rp "  Install $app_name? [y/N]: " response
+    read -rp "  Install $app_name? [y/N]: " response || response="n"
     [[ "$response" =~ ^[Yy]$ ]]
 }
-
-run_cmd() {
-    if [ "$DRY_RUN" = true ]; then
-        info "[DRY-RUN] Would run: $*"
-    else
-        "$@"
-    fi
-}
-
-zshrc_add() {
-    if [ "$DRY_RUN" = true ]; then
-        info "[DRY-RUN] Would add to ~/.zshrc: $1"
-    else
-        grep -qF "$1" ~/.zshrc 2>/dev/null || echo "$1" >> ~/.zshrc
-    fi
-}
-
-LOG_DIR="$HOME/.local/state/setup"
-mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/mac-setup-$(date +%Y%m%d_%H%M%S).log"
-exec > >(tee -a "$LOG_FILE") 2>&1
-info "Logging execution output to $LOG_FILE"
-
-# ==============================================================================
-# SUDO KEEP-ALIVE WITH TRAP CLEANUP
-# ==============================================================================
-
-if [ "$DRY_RUN" = false ]; then
-    sudo -v
-    while true; do sudo -n true; sleep 55; kill -0 "$$" || exit; done 2>/dev/null &
-    SUDO_PID=$!
-
-    cleanup() {
-        local exit_code=$?
-        kill "$SUDO_PID" 2>/dev/null || true
-        if [ $exit_code -ne 0 ]; then
-            warn "Process exited with code $exit_code"
-        fi
-    }
-    trap cleanup EXIT INT TERM
-fi
 
 # ==============================================================================
 # 1. BASE CLI TOOLS & PACKAGES
@@ -97,7 +37,7 @@ step "Checking Homebrew..."
 if ! command -v brew &> /dev/null; then
     run_cmd /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     if [ "$DRY_RUN" = false ]; then
-        eval "$(/opt/homebrew/bin/brew shellenv)"
+        eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv 2>/dev/null || true)"
     fi
 else
     info "Homebrew already installed"
@@ -125,13 +65,20 @@ formulas=(
 )
 
 step "Installing CLI tools (${#formulas[@]} formulas)..."
+installed_formulas=$(brew list --formula -1 2>/dev/null || true)
+to_install=()
 for formula in "${formulas[@]}"; do
-    if brew list "$formula" &>/dev/null; then
+    if echo "$installed_formulas" | grep -qx "$formula"; then
         info "$formula already installed"
     else
-        run_cmd brew install "$formula"
+        to_install+=("$formula")
     fi
 done
+
+if [ ${#to_install[@]} -gt 0 ]; then
+    info "Installing ${#to_install[@]} missing formulas: ${to_install[*]}"
+    run_cmd brew install "${to_install[@]}"
+fi
 
 # ==============================================================================
 # 2. GUI APPLICATIONS (CASKS)
@@ -183,17 +130,19 @@ echo ""
 if [ "$NON_INTERACTIVE" = true ]; then
     bulk_response="y"
 else
-    read -rp "Install ALL optional apps at once? [y/N]: " bulk_response
+    read -rp "Install ALL optional apps at once? [y/N]: " bulk_response || bulk_response="n"
 fi
 
 if [[ "$bulk_response" =~ ^[Yy]$ ]]; then
     info "Installing all optional applications..."
     run_cmd brew install --cask "${optional_apps[@]}"
 else
-    read -rp "Would you like to pick specific apps to install? [y/N]: " pick_response
+    read -rp "Would you like to pick specific apps to install? [y/N]: " pick_response || pick_response="n"
     if [[ "$pick_response" =~ ^[Yy]$ ]]; then
         for app in "${optional_apps[@]}"; do
-            ask_to_install "$app" && run_cmd brew install --cask "$app" || true
+            if ask_to_install "$app"; then
+                run_cmd brew install --cask "$app" || true
+            fi
         done
     else
         warn "Skipping all optional applications."
@@ -217,7 +166,7 @@ licensed_apps=(
 if [ "$NON_INTERACTIVE" = true ]; then
     lic_response="n"
 else
-    read -rp "Do you want to install licensed software? (require separate purchase) [y/N]: " lic_response
+    read -rp "Do you want to install licensed software? (require separate purchase) [y/N]: " lic_response || lic_response="n"
 fi
 
 if [[ "$lic_response" =~ ^[Yy]$ ]]; then
@@ -226,16 +175,18 @@ if [[ "$lic_response" =~ ^[Yy]$ ]]; then
     for app in "${licensed_apps[@]}"; do echo "  - $app"; done
     echo ""
 
-    read -rp "Install ALL licensed apps at once? [y/N]: " lic_bulk_response
+    read -rp "Install ALL licensed apps at once? [y/N]: " lic_bulk_response || lic_bulk_response="n"
 
     if [[ "$lic_bulk_response" =~ ^[Yy]$ ]]; then
         info "Installing all licensed applications..."
         run_cmd brew install --cask "${licensed_apps[@]}"
     else
-        read -rp "Would you like to pick specific licensed apps to install? [y/N]: " lic_pick_response
+        read -rp "Would you like to pick specific licensed apps to install? [y/N]: " lic_pick_response || lic_pick_response="n"
         if [[ "$lic_pick_response" =~ ^[Yy]$ ]]; then
             for app in "${licensed_apps[@]}"; do
-                ask_to_install "$app" && run_cmd brew install --cask "$app" || true
+                if ask_to_install "$app"; then
+                    run_cmd brew install --cask "$app" || true
+                fi
             done
         else
             warn "Skipping all licensed applications."
@@ -280,7 +231,7 @@ run_cmd sudo git lfs install --system
 if [ "$NON_INTERACTIVE" = true ]; then
     ssh_response="n"
 else
-    read -rp "Do you want to enable SSH server (Remote Login) with password authentication? [y/N]: " ssh_response
+    read -rp "Do you want to enable SSH server (Remote Login) with password authentication? [y/N]: " ssh_response || ssh_response="n"
 fi
 
 if [[ "$ssh_response" =~ ^[Yy]$ ]]; then
@@ -308,7 +259,7 @@ fi
 if [ "$NON_INTERACTIVE" = true ]; then
     ts_response="n"
 else
-    read -rp "Do you want to install and configure Tailscale? [y/N]: " ts_response
+    read -rp "Do you want to install and configure Tailscale? [y/N]: " ts_response || ts_response="n"
 fi
 
 if [[ "$ts_response" =~ ^[Yy]$ ]]; then
@@ -322,7 +273,11 @@ if [[ "$ts_response" =~ ^[Yy]$ ]]; then
         sudo launchctl bootstrap system /Library/LaunchDaemons/com.tailscale.tailscaled.plist
         sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add /opt/homebrew/bin/tailscaled
         sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp /opt/homebrew/bin/tailscaled
-        until sudo tailscale status &>/dev/null; do sleep 1; done
+        retries=15
+        while ! sudo tailscale status &>/dev/null && [ "$retries" -gt 0 ]; do
+            sleep 1
+            retries=$((retries - 1))
+        done
         sudo tailscale up --ssh --accept-routes --accept-dns
     fi
 fi
@@ -334,7 +289,7 @@ fi
 if [ "$NON_INTERACTIVE" = true ]; then
     vst_response="n"
 else
-    read -rp "Do you want to enable VS Code Tunnel as a service? [y/N]: " vst_response
+    read -rp "Do you want to enable VS Code Tunnel as a service? [y/N]: " vst_response || vst_response="n"
 fi
 
 if [[ "$vst_response" =~ ^[Yy]$ ]]; then
@@ -345,7 +300,7 @@ if [[ "$vst_response" =~ ^[Yy]$ ]]; then
         default_name=$(hostname -s)
         tunnel_name="${default_name}"
         if [ "$NON_INTERACTIVE" = false ]; then
-            read -rp "  Tunnel name [$default_name]: " input_name
+            read -rp "  Tunnel name [$default_name]: " input_name || input_name=""
             tunnel_name="${input_name:-$default_name}"
         fi
         run_cmd "$CODE_CMD" tunnel service install --accept-server-license-terms --name "$tunnel_name"

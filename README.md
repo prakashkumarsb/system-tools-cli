@@ -19,13 +19,13 @@ Automated provisioning scripts for setting up development machines from scratch.
 **Install (one-liner):**
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/sb-pk/setup/main/mac.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/prakashkumarsb/system-tools-cli/main/mac.sh)"
 ```
 
 **Uninstall (one-liner):**
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/sb-pk/setup/main/uninstall-mac.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/prakashkumarsb/system-tools-cli/main/uninstall-mac.sh)"
 ```
 
 ### Linux
@@ -33,7 +33,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/sb-pk/setup/main/uninsta
 **Install (one-liner):**
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/sb-pk/setup/main/linux.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/prakashkumarsb/system-tools-cli/main/linux.sh)"
 ```
 
 `linux.sh` auto-detects your distro and runs the appropriate script:
@@ -44,13 +44,13 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/sb-pk/setup/main/linux.s
 **Uninstall (one-liner):**
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/sb-pk/setup/main/uninstall-linux.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/prakashkumarsb/system-tools-cli/main/uninstall-linux.sh)"
 ```
 
 **Or clone and run locally:**
 
 ```bash
-git clone https://github.com/sb-pk/setup.git && cd setup
+git clone https://github.com/prakashkumarsb/system-tools-cli.git && cd system-tools-cli
 chmod +x linux.sh
 ./linux.sh
 ```
@@ -224,7 +224,7 @@ Removes all formulas, casks, zshrc entries, Oh My Zsh, VS Code Tunnel service, S
 ### Linux
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/sb-pk/setup/main/uninstall-linux.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/prakashkumarsb/system-tools-cli/main/uninstall-linux.sh)"
 ```
 
 Auto-detects distro and runs `uninstall-linux-debian.sh` or `uninstall-linux-rhel.sh` accordingly. Removes all packages, repos, keyrings, Oh My Zsh, zshrc entries, Docker, SSH server, and Tailscale.
@@ -232,7 +232,7 @@ Auto-detects distro and runs `uninstall-linux-debian.sh` or `uninstall-linux-rhe
 ## Project Structure
 
 ```
-setup/
+system-tools-cli/
 ├── mac.sh                    # macOS setup script
 ├── uninstall-mac.sh          # macOS uninstall script
 ├── linux.sh                  # Distro dispatcher (auto-detects and delegates)

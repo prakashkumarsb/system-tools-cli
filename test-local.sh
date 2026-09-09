@@ -25,11 +25,11 @@ cd "$SCRIPT_DIR"
 
 step "Running ShellCheck on all shell scripts..."
 if command -v shellcheck &>/dev/null; then
-    shellcheck -e SC1091,SC2016 ./*.sh
+    shellcheck -e SC1091,SC2016,SC2317 ./*.sh
     info "ShellCheck passed cleanly!"
 else
     warn "shellcheck not installed on host — running via Docker..."
-    docker run --rm -v "$(pwd)":/mnt koalaman/shellcheck:latest -e SC1091,SC2016 ./*.sh
+    docker run --rm -v "$(pwd)":/mnt koalaman/shellcheck:latest -e SC1091,SC2016,SC2317 ./*.sh
     info "Docker ShellCheck passed cleanly!"
 fi
 
@@ -41,23 +41,25 @@ if ! command -v docker &>/dev/null; then
     die "Docker is not running or not installed on your system."
 fi
 
-step "Testing macOS script (local dry-run)..."
+step "Testing macOS scripts (local dry-run)..."
 ./mac.sh --dry-run -y >/dev/null
-info "mac.sh dry-run passed!"
+./uninstall-mac.sh --dry-run -y >/dev/null
+info "mac.sh and uninstall-mac.sh dry-run passed!"
 
 step "Testing Linux distro dispatcher in Docker containers..."
 
 test_distro() {
     local distro=$1
     local pkg_cmd=$2
-    info "Testing on $distro..."
+    info "Testing on $distro (setup + uninstall)..."
     docker run --rm -v "$(pwd)":/work -w /work "$distro" \
-        bash -c "$pkg_cmd && ./linux.sh --dry-run -y" >/dev/null
+        bash -c "$pkg_cmd && ./linux.sh --dry-run -y && ./uninstall-linux.sh --dry-run -y" >/dev/null
     info "Passed on $distro!"
 }
 
 test_distro "ubuntu:24.04" "apt-get update && apt-get install -y sudo"
 test_distro "debian:12"    "apt-get update && apt-get install -y sudo"
+test_distro "debian:trixie" "apt-get update && apt-get install -y sudo"
 test_distro "fedora:40"    "dnf install -y sudo"
 test_distro "rockylinux:9" "dnf install -y sudo"
 

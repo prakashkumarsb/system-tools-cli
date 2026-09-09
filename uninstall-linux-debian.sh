@@ -1,44 +1,23 @@
 #!/bin/bash
 set -uo pipefail
 
-NON_INTERACTIVE=false
-DRY_RUN=false
+# Load common library: reference locally if present; fetch from GitHub if running remotely
+export REPO_BASE="${REPO_BASE:-https://raw.githubusercontent.com/prakashkumarsb/system-tools-cli/main}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo "")"
+if [ -n "$SCRIPT_DIR" ] && [ -f "${SCRIPT_DIR}/common.sh" ]; then
+    # shellcheck source=/dev/null
+    . "${SCRIPT_DIR}/common.sh"
+else
+    # shellcheck source=/dev/null
+    . <(curl -fsSL "${REPO_BASE}/common.sh")
+fi
 
-usage() {
-    echo "Usage: $0 [OPTIONS]"
-    echo ""
-    echo "Options:"
-    echo "  -y, --non-interactive  Run without interactive confirmation"
-    echo "  --dry-run              Show actions without deleting"
-    echo "  -h, --help             Show this help message"
-    exit 0
-}
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -y|--non-interactive) NON_INTERACTIVE=true; shift ;;
-        --dry-run)           DRY_RUN=true; shift ;;
-        -h|--help)            usage ;;
-        *)                    echo "Unknown argument: $1"; usage ;;
-    esac
-done
+init_cli_flags "$@"
 
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-NC='\033[0m'
-
-info()  { echo -e "${GREEN}[✓]${NC} $1"; }
-warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
 step()  { echo -e "\n${RED}[x]${NC} $1"; }
-
-run_cmd() {
-    if [ "$DRY_RUN" = true ]; then
-        info "[DRY-RUN] Would run: $*"
-    else
-        "$@"
-    fi
-}
 
 echo -e "${RED}╔══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${RED}║  WARNING: This will uninstall everything from linux-debian.sh ║${NC}"
@@ -46,21 +25,29 @@ echo -e "${RED}╚════════════════════�
 echo ""
 
 if [ "$NON_INTERACTIVE" = false ]; then
-    read -rp "Are you sure you want to proceed? [y/N]: " confirm
+    read -rp "Are you sure you want to proceed? [y/N]: " confirm || confirm="n"
     [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
 fi
 
-if [ "$DRY_RUN" = false ]; then
-    sudo -v
-    while true; do sudo -n true; sleep 55; kill -0 "$$" || exit; done 2>/dev/null &
-    SUDO_PID=$!
-    trap 'kill "$SUDO_PID" 2>/dev/null || true' EXIT INT TERM
-fi
+init_sudo_keepalive
 
 step "Removing VS Code Tunnel service..."
 CODE_CMD="$(command -v code 2>/dev/null || true)"
 if [ -n "$CODE_CMD" ]; then
     run_cmd "$CODE_CMD" tunnel service uninstall 2>/dev/null || true
+fi
+if pidof systemd &>/dev/null && [ "$DRY_RUN" = false ]; then
+    sudo systemctl unmask sleep.target suspend.target hibernate.target hybrid-sleep.target 2>/dev/null || true
+fi
+
+step "Removing Docker..."
+if [ "$DRY_RUN" = false ]; then
+    if pidof systemd &>/dev/null; then
+        sudo systemctl disable --now docker.service docker.socket containerd.service 2>/dev/null || true
+    else
+        sudo service docker stop 2>/dev/null || true
+    fi
+    sudo apt-get purge -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin 2>/dev/null || true
 fi
 
 step "Removing Tailscale..."
@@ -85,26 +72,43 @@ fi
 step "Removing Git LFS system config..."
 run_cmd sudo git lfs uninstall --system 2>/dev/null || true
 
+step "Removing desktop screensaver auto-lock configs..."
+if [ "$DRY_RUN" = false ]; then
+    rm -f "$HOME/.xscreensaver"
+    rm -f "$HOME/.config/autostart/xscreensaver.desktop"
+fi
+
 step "Cleaning .zshrc entries..."
 lines_to_remove=(
     'source $ZSH_CUSTOM/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh'
     'source $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh'
     'source $ZSH_CUSTOM/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh'
+    'alias bat=batcat'
     'export PATH="$JAVA_HOME/bin:$PATH"'
     'eval "$(starship init zsh)"'
 )
-if [ -f ~/.zshrc ] && [ "$DRY_RUN" = false ]; then
-    for line in "${lines_to_remove[@]}"; do
-        sed -i "\|${line}|d" ~/.zshrc
-    done
-    sed -i '/export JAVA_HOME=/d' ~/.zshrc
-fi
+for line in "${lines_to_remove[@]}"; do
+    zshrc_remove "$line"
+done
+zshrc_remove "export JAVA_HOME="
 
 step "Uninstalling VS Code..."
 if [ "$DRY_RUN" = false ]; then
     sudo apt-get purge -y code 2>/dev/null || true
+fi
+
+step "Removing third-party APT repositories, PPAs & keyrings..."
+if [ "$DRY_RUN" = false ]; then
     sudo rm -f /etc/apt/sources.list.d/vscode.list
     sudo rm -f /usr/share/keyrings/packages.microsoft.gpg
+    sudo rm -f /etc/apt/sources.list.d/github-cli.list
+    sudo rm -f /etc/apt/keyrings/githubcli-archive-keyring.gpg
+    sudo rm -f /etc/apt/sources.list.d/docker.list
+    sudo rm -f /etc/apt/keyrings/docker.gpg
+    sudo rm -f /etc/apt/sources.list.d/nodesource.list /etc/apt/keyrings/nodesource.gpg /etc/apt/sources.list.d/nodesource.sources
+    sudo rm -f /etc/apt/sources.list.d/backports.list
+    sudo rm -f /etc/apt/sources.list.d/openjdk-r-*.list /etc/apt/sources.list.d/openjdk-r-*.sources
+    sudo rm -f /usr/local/bin/bat
 fi
 
 step "Uninstalling CLI packages..."

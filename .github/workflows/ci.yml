@@ -15,7 +15,7 @@ jobs:
       - name: Run ShellCheck
         run: |
           sudo apt-get update && sudo apt-get install -y shellcheck
-          shellcheck -e SC1091,SC2016 ./*.sh
+          shellcheck -e SC1091,SC2016,SC2317 ./*.sh
 
   test-linux:
     name: Test Linux Scripts (Dry-Run)
@@ -32,7 +32,7 @@ jobs:
 
   test-mac:
     name: Test macOS Script (Dry-Run)
-    runs-on: macos-14
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - name: Test mac.sh

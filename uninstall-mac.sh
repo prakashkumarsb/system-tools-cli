@@ -1,44 +1,20 @@
 #!/bin/bash
 set -uo pipefail
 
-NON_INTERACTIVE=false
-DRY_RUN=false
+# Load common library: reference locally if present; fetch from GitHub if running remotely
+export REPO_BASE="${REPO_BASE:-https://raw.githubusercontent.com/prakashkumarsb/system-tools-cli/main}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || echo "")"
+if [ -n "$SCRIPT_DIR" ] && [ -f "${SCRIPT_DIR}/common.sh" ]; then
+    # shellcheck source=/dev/null
+    . "${SCRIPT_DIR}/common.sh"
+else
+    # shellcheck source=/dev/null
+    . <(curl -fsSL "${REPO_BASE}/common.sh")
+fi
 
-usage() {
-    echo "Usage: $0 [OPTIONS]"
-    echo ""
-    echo "Options:"
-    echo "  -y, --non-interactive  Run without interactive confirmation"
-    echo "  --dry-run              Show actions without deleting"
-    echo "  -h, --help             Show this help message"
-    exit 0
-}
+init_cli_flags "$@"
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -y|--non-interactive) NON_INTERACTIVE=true; shift ;;
-        --dry-run)           DRY_RUN=true; shift ;;
-        -h|--help)            usage ;;
-        *)                    echo "Unknown argument: $1"; usage ;;
-    esac
-done
-
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-NC='\033[0m'
-
-info()  { echo -e "${GREEN}[✓]${NC} $1"; }
-warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
 step()  { echo -e "\n${RED}[x]${NC} $1"; }
-
-run_cmd() {
-    if [ "$DRY_RUN" = true ]; then
-        info "[DRY-RUN] Would run: $*"
-    else
-        "$@"
-    fi
-}
 
 echo -e "${RED}╔══════════════════════════════════════════════════════════╗${NC}"
 echo -e "${RED}║  WARNING: This will uninstall everything from mac.sh    ║${NC}"
@@ -46,16 +22,11 @@ echo -e "${RED}╚════════════════════�
 echo ""
 
 if [ "$NON_INTERACTIVE" = false ]; then
-    read -rp "Are you sure you want to proceed? [y/N]: " confirm
+    read -rp "Are you sure you want to proceed? [y/N]: " confirm || confirm="n"
     [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
 fi
 
-if [ "$DRY_RUN" = false ]; then
-    sudo -v
-    while true; do sudo -n true; sleep 55; kill -0 "$$" || exit; done 2>/dev/null &
-    SUDO_PID=$!
-    trap 'kill "$SUDO_PID" 2>/dev/null || true' EXIT INT TERM
-fi
+init_sudo_keepalive
 
 step "Removing VS Code Tunnel service..."
 CODE_CMD="/opt/homebrew/bin/code"
@@ -64,6 +35,17 @@ if [ -n "$CODE_CMD" ]; then
     run_cmd "$CODE_CMD" tunnel service uninstall 2>/dev/null || true
 fi
 run_cmd sudo pmset -a disablesleep 0 2>/dev/null || true
+
+step "Disabling SSH server (Remote Login) & restoring config..."
+if [ "$DRY_RUN" = false ]; then
+    sudo systemsetup -setremotelogin off 2>/dev/null || true
+    SSHD_CONFIG="/etc/ssh/sshd_config"
+    if [ -f "${SSHD_CONFIG}.bak" ]; then
+        sudo cp "${SSHD_CONFIG}.bak" "$SSHD_CONFIG"
+        sudo rm -f "${SSHD_CONFIG}.bak"
+        sudo launchctl unload /System/Library/LaunchDaemons/ssh.plist 2>/dev/null || true
+    fi
+fi
 
 step "Removing Tailscale..."
 if command -v tailscale &> /dev/null && [ "$DRY_RUN" = false ]; then
@@ -91,11 +73,9 @@ lines_to_remove=(
     'eval "$(starship init zsh)"'
 )
 
-if [ -f ~/.zshrc ] && [ "$DRY_RUN" = false ]; then
-    for line in "${lines_to_remove[@]}"; do
-        sed -i '' "\|${line}|d" ~/.zshrc
-    done
-fi
+for line in "${lines_to_remove[@]}"; do
+    zshrc_remove "$line"
+done
 
 step "Uninstalling GUI applications..."
 core_casks=(iterm2 visual-studio-code orbstack)
@@ -110,7 +90,7 @@ done
 step "Uninstalling CLI formulas..."
 formulas=(
     bash bat btop coreutils docker docker-compose gh git git-lfs
-    htop ipinfo-cli jq maven node orbstack parallel pipx python3
+    htop ipinfo-cli jq maven node parallel pipx python3
     ripgrep shellcheck sshpass starship watch wget yq zsh-autosuggestions
     zsh-history-substring-search zsh-syntax-highlighting rsync openjdk@21
 )
@@ -119,10 +99,11 @@ for formula in "${formulas[@]}"; do
     run_cmd brew uninstall "$formula" 2>/dev/null || true
 done
 
-step "Removing Oh My Zsh & Manifest..."
+step "Removing Oh My Zsh, shell integration & Manifest..."
 if [ -d "$HOME/.oh-my-zsh" ]; then
     run_cmd rm -rf "$HOME/.oh-my-zsh"
 fi
+run_cmd rm -f "$HOME/.iterm2_shell_integration.zsh"
 run_cmd rm -f "$HOME/.config/setup/manifest.json"
 
 info "Uninstall complete."
