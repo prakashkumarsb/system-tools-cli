@@ -287,8 +287,31 @@ step "Initializing Git LFS..."
 run_cmd sudo git lfs install --system
 
 # ==============================================================================
-# 5. LXQT XSCREENSAVER AUTO-LOCK
+# 5. DESKTOP AUTO-LOCK CONFIGURATION
 # ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 5a. GNOME AUTO-LOCK (Ubuntu, Debian+GNOME, Pop!_OS, etc.)
+# ------------------------------------------------------------------------------
+
+if [[ -n "${XDG_CURRENT_DESKTOP:-}" && "${XDG_CURRENT_DESKTOP}" == *"GNOME"* ]] || command -v gnome-session &>/dev/null; then
+    step "Configuring GNOME auto-lock..."
+    if [ "$DRY_RUN" = false ]; then
+        # Set screen blank timeout to 5 minutes (300 seconds)
+        gsettings set org.gnome.desktop.session idle-delay 300
+        # Enable automatic screen lock
+        gsettings set org.gnome.desktop.screensaver lock-enabled true
+        # Lock immediately when screen blanks (0 seconds delay)
+        gsettings set org.gnome.desktop.screensaver lock-delay 0
+        info "Configured GNOME: 5-minute idle → immediate lock"
+    else
+        info "[DRY-RUN] Would configure GNOME auto-lock"
+    fi
+fi
+
+# ------------------------------------------------------------------------------
+# 5b. LXQT XSCREENSAVER AUTO-LOCK
+# ------------------------------------------------------------------------------
 
 # Detect LXQt desktop environment (Lubuntu, Debian+LXQt, Ubuntu+LXQt, MX Linux+LXQt, etc.)
 # LXQt does not ship its own screensaver; xscreensaver is the standard choice for X11 sessions.
@@ -324,9 +347,9 @@ AUTOSTART_EOF
     fi
 fi
 
-# ==============================================================================
-# 5b. XFCE SCREENSAVER AUTO-LOCK (MX Linux / Xubuntu / Debian+XFCE)
-# ==============================================================================
+# ------------------------------------------------------------------------------
+# 5c. XFCE SCREENSAVER AUTO-LOCK (MX Linux / Xubuntu / Debian+XFCE)
+# ------------------------------------------------------------------------------
 
 # Detect XFCE desktop environment
 if [[ -n "${XDG_CURRENT_DESKTOP:-}" && "${XDG_CURRENT_DESKTOP}" == *"XFCE"* ]] || command -v xfce4-session &>/dev/null; then
@@ -342,6 +365,8 @@ if [[ -n "${XDG_CURRENT_DESKTOP:-}" && "${XDG_CURRENT_DESKTOP}" == *"XFCE"* ]] |
         xfconf-query -c xfce4-screensaver -p /saver/enabled -s true --create -t bool
         # Set idle timeout to 5 minutes (300 seconds)
         xfconf-query -c xfce4-screensaver -p /saver/idle-activation/delay -s 5 --create -t int
+        # Enable idle activation (critical: without this, screensaver won't trigger on idle)
+        xfconf-query -c xfce4-screensaver -p /saver/idle-activation/enabled -s true --create -t bool
         # Enable lock on activation
         xfconf-query -c xfce4-screensaver -p /lock/enabled -s true --create -t bool
         # Lock immediately when screensaver activates (0 minutes delay)

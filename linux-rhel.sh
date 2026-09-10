@@ -239,7 +239,62 @@ step "Initializing Git LFS..."
 run_cmd sudo git lfs install --system
 
 # ==============================================================================
-# 5. OPTIONAL SSH SERVER
+# 5. DESKTOP AUTO-LOCK CONFIGURATION
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 5a. GNOME AUTO-LOCK (Fedora, RHEL Workstation, CentOS+GNOME, etc.)
+# ------------------------------------------------------------------------------
+
+if [[ -n "${XDG_CURRENT_DESKTOP:-}" && "${XDG_CURRENT_DESKTOP}" == *"GNOME"* ]] || command -v gnome-session &>/dev/null; then
+    step "Configuring GNOME auto-lock..."
+    if [ "$DRY_RUN" = false ]; then
+        # Set screen blank timeout to 5 minutes (300 seconds)
+        gsettings set org.gnome.desktop.session idle-delay 300
+        # Enable automatic screen lock
+        gsettings set org.gnome.desktop.screensaver lock-enabled true
+        # Lock immediately when screen blanks (0 seconds delay)
+        gsettings set org.gnome.desktop.screensaver lock-delay 0
+        info "Configured GNOME: 5-minute idle → immediate lock"
+    else
+        info "[DRY-RUN] Would configure GNOME auto-lock"
+    fi
+fi
+
+# ------------------------------------------------------------------------------
+# 5b. XFCE SCREENSAVER AUTO-LOCK (Fedora XFCE spin, CentOS+XFCE, etc.)
+# ------------------------------------------------------------------------------
+
+if [[ -n "${XDG_CURRENT_DESKTOP:-}" && "${XDG_CURRENT_DESKTOP}" == *"XFCE"* ]] || command -v xfce4-session &>/dev/null; then
+    step "Configuring xfce4-screensaver auto-lock for XFCE..."
+    if [ "$DRY_RUN" = false ]; then
+        # Install xfce4-screensaver if not present
+        if ! command -v xfce4-screensaver &>/dev/null; then
+            sudo dnf -y install xfce4-screensaver
+        fi
+
+        # Configure via xfconf-query (XFCE's settings backend)
+        # Enable screensaver
+        xfconf-query -c xfce4-screensaver -p /saver/enabled -s true --create -t bool
+        # Set idle timeout to 5 minutes (300 seconds)
+        xfconf-query -c xfce4-screensaver -p /saver/idle-activation/delay -s 5 --create -t int
+        # Enable idle activation (critical: without this, screensaver won't trigger on idle)
+        xfconf-query -c xfce4-screensaver -p /saver/idle-activation/enabled -s true --create -t bool
+        # Enable lock on activation
+        xfconf-query -c xfce4-screensaver -p /lock/enabled -s true --create -t bool
+        # Lock immediately when screensaver activates (0 minutes delay)
+        xfconf-query -c xfce4-screensaver -p /lock/saver-activation/delay -s 0 --create -t int
+        # Also lock on suspend/sleep
+        xfconf-query -c xfce4-screensaver -p /lock/sleep-activation/enabled -s true --create -t bool
+
+        info "Configured xfce4-screensaver: 5-minute idle → immediate lock"
+    else
+        info "[DRY-RUN] Would configure xfce4-screensaver auto-lock for XFCE"
+    fi
+fi
+
+# ==============================================================================
+# 6. OPTIONAL SSH SERVER
 # ==============================================================================
 
 if [ "$NON_INTERACTIVE" = true ]; then
@@ -264,7 +319,7 @@ if [[ "$ssh_response" =~ ^[Yy]$ && "$DRY_RUN" = false ]]; then
 fi
 
 # ==============================================================================
-# 6. TAILSCALE (OPTIONAL)
+# 7. TAILSCALE (OPTIONAL)
 # ==============================================================================
 
 if [ "$NON_INTERACTIVE" = true ]; then
@@ -282,7 +337,7 @@ if [[ "$ts_response" =~ ^[Yy]$ && "$DRY_RUN" = false ]]; then
 fi
 
 # ==============================================================================
-# 7. VS CODE TUNNEL
+# 8. VS CODE TUNNEL
 # ==============================================================================
 
 if [ "$NON_INTERACTIVE" = true ]; then
@@ -307,7 +362,7 @@ if [[ "$vst_response" =~ ^[Yy]$ && "$DRY_RUN" = false ]]; then
 fi
 
 # ==============================================================================
-# 8. STATE MANIFEST & VERIFICATION
+# 9. STATE MANIFEST & VERIFICATION
 # ==============================================================================
 
 step "Writing installation manifest..."
